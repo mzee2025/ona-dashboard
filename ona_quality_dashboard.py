@@ -8,9 +8,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ONAQualityDashboard:
-    def __init__(self, data_file):
-        """Initialize dashboard with data file"""
+    def __init__(self, data_file, config=None):
+        """Initialize dashboard with data file and optional config"""
         self.data_file = data_file
+        self.config = config or {}
         self.df = None
         
     def load_data(self):
