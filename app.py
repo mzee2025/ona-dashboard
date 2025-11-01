@@ -31,7 +31,7 @@ ONA_API_TOKEN = "9cbc65f1c34ff5a3623cdac41043b788014992c0"
 DATA_FILE = "ona_data_export.csv"
 DASHBOARD_FILE = "ona_quality_dashboard.html"
 CONFIG_FILE = "dashboard_config.json"
-REFRESH_INTERVAL = 3600  # 1 hour in seconds
+REFRESH_INTERVAL = 1800  # 30 minutes in seconds
 
 # Global variables to track update status
 last_update_time = None
