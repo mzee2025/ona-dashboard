@@ -1,0 +1,26 @@
+# ONA Quality Dashboard Requirements - Web Version
+# Install with: pip install -r requirements.txt
+
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0  # For Excel export
+
+# Visualization
+plotly>=5.18.0
+kaleido>=0.2.1  # For static image export (optional)
+
+# Web application
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+gunicorn>=21.2.0  # Production WSGI server
+
+# Scheduling (for automated updates)
+schedule>=1.2.0
+
+# API access (for ONA integration)
+requests>=2.31.0
+
+# Additional utilities
+python-dateutil>=2.8.2
+pytz>=2023.3

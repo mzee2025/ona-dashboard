@@ -1,0 +1,78 @@
+{
+    "min_duration": 30,
+    "max_duration": 120,
+    "target_districts": [
+        "District 1",
+        "District 2",
+        "District 3",
+        "District 4",
+        "District 5"
+    ],
+    "target_boundaries": {
+        "lat_min": -5.0,
+        "lat_max": 5.0,
+        "lon_min": 29.0,
+        "lon_max": 35.0
+    },
+    "gps_tolerance": 0.01,
+    "required_fields": [
+        "respondent_id",
+        "respondent_name",
+        "district",
+        "village",
+        "interview_date",
+        "enumerator_id",
+        "survey_complete"
+    ],
+    "logical_checks": [
+        {
+            "name": "Age within valid range",
+            "description": "Age should be between 0 and 120",
+            "condition": "(age < 0) | (age > 120)",
+            "fields": [
+                "age"
+            ]
+        },
+        {
+            "name": "Children count consistency",
+            "description": "Number of children should not exceed household size",
+            "condition": "num_children > household_size",
+            "fields": [
+                "num_children",
+                "household_size"
+            ]
+        },
+        {
+            "name": "Income vs poverty status",
+            "description": "High income should not match extreme poverty status",
+            "condition": "(monthly_income > 500000) & (poverty_status == 'extreme')",
+            "fields": [
+                "monthly_income",
+                "poverty_status"
+            ]
+        }
+    ],
+    "column_mapping": {
+        "district_column": "district",
+        "duration_column": "duration_minutes",
+        "latitude_column": "latitude",
+        "longitude_column": "longitude",
+        "submission_time_column": "submission_time",
+        "enumerator_column": "enumerator_id"
+    },
+    "alert_thresholds": {
+        "min_completion_rate": 80,
+        "max_missing_data_percent": 10,
+        "max_duration_flags_percent": 5,
+        "max_gps_issues_percent": 2
+    },
+    "auto_refresh": {
+        "enabled": true,
+        "interval_hours": 6
+    },
+    "exports": {
+        "include_raw_data": false,
+        "export_flagged_records": true,
+        "generate_pdf_summary": true
+    }
+}
