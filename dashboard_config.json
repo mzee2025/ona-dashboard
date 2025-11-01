@@ -1,6 +1,7 @@
 {
-    "min_duration": 30,
+ "min_duration": 30,
     "max_duration": 120,
+    "start_date": "2025-11-01",
     "target_districts": [
         "Bosaso",
         "Dhusamareb",
@@ -26,5 +27,20 @@
         "submission_time_column": "_submission_time",
         "enumerator_column": "enums_information/enumerator_name",
         "geopoint_column": "hh_geopoint"
+    },
+    "alert_thresholds": {
+        "min_completion_rate": 80,
+        "max_missing_data_percent": 10,
+        "max_duration_flags_percent": 5,
+        "max_gps_issues_percent": 2
+    },
+    "auto_refresh": {
+        "enabled": true,
+        "interval_hours": 1
+    },
+    "exports": {
+        "include_raw_data": false,
+        "export_flagged_records": true,
+        "generate_pdf_summary": true
     }
 }
