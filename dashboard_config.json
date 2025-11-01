@@ -28,6 +28,7 @@
         "enumerator_column": "enums_information/enumerator_name",
         "geopoint_column": "hh_geopoint"
     },
+    "logical_checks": [],
     "alert_thresholds": {
         "min_completion_rate": 80,
         "max_missing_data_percent": 10,
