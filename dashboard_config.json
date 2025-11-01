@@ -1,5 +1,5 @@
 {
- "min_duration": 30,
+    "min_duration": 30,
     "max_duration": 120,
     "start_date": "2025-11-01",
     "target_districts": [
@@ -23,7 +23,7 @@
     ],
     "column_mapping": {
         "district_column": "respondent_information/District_id",
-        "duration_column": "_duration",
+        "duration_column": "duration_minutes",
         "submission_time_column": "_submission_time",
         "enumerator_column": "enums_information/enumerator_name",
         "geopoint_column": "hh_geopoint"

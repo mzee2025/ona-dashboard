@@ -31,7 +31,7 @@ ONA_API_TOKEN = "9cbc65f1c34ff5a3623cdac41043b788014992c0"
 DATA_FILE = "ona_data_export.csv"
 DASHBOARD_FILE = "ona_quality_dashboard.html"
 CONFIG_FILE = "dashboard_config.json"
-REFRESH_INTERVAL = 3600  # 1 hour in seconds
+REFRESH_INTERVAL = 1800  # 30 minutes in seconds
 
 # Global variables to track update status
 last_update_time = None
@@ -69,53 +69,9 @@ def fetch_ona_data():
         if response.status_code == 200:
             data = response.json()
             df = pd.DataFrame(data)
-            
-            # Filter data by start date (exclude pilot data)
-            config = load_config()
-            start_date_str = config.get('start_date', '2025-11-01')
-            START_DATE = datetime.strptime(start_date_str, '%Y-%m-%d')
-            
-            if '_submission_time' in df.columns:
-                # Convert submission time to datetime
-                df['_submission_time'] = pd.to_datetime(df['_submission_time'])
-                
-                # Filter out pilot data
-                original_count = len(df)
-                df = df[df['_submission_time'] >= START_DATE]
-                filtered_count = original_count - len(df)
-                
-                if filtered_count > 0:
-                    logger.info(f"Filtered out {filtered_count} pilot records before {START_DATE.date()}")
-                logger.info(f"Keeping {len(df)} records from {START_DATE.date()} onwards")
-            
-            # Convert duration from seconds to minutes
-            if '_duration' in df.columns:
-                # Create duration_minutes column by dividing seconds by 60
-                df['duration_minutes'] = df['_duration'] / 60
-                logger.info("Converted duration from seconds to minutes")
-            
-            # Split geopoint if it exists
-            if 'hh_geopoint' in df.columns:
-                def split_geopoint(geopoint):
-                    """Split geopoint string into lat, lon"""
-                    if pd.isna(geopoint) or geopoint == '':
-                        return None, None
-                    try:
-                        parts = str(geopoint).split()
-                        if len(parts) >= 2:
-                            return float(parts[0]), float(parts[1])
-                        return None, None
-                    except:
-                        return None, None
-                
-                df[['latitude', 'longitude']] = df['hh_geopoint'].apply(
-                    lambda x: pd.Series(split_geopoint(x))
-                )
-                logger.info("Split hh_geopoint into latitude and longitude")
-            
             df.to_csv(DATA_FILE, index=False)
             last_update_time = datetime.now()
-            logger.info(f"Successfully fetched {len(df)} records from ONA (after filtering)")
+            logger.info(f"Successfully fetched {len(df)} records from ONA")
             return True
         else:
             logger.error(f"Failed to fetch data from ONA: {response.status_code}")
@@ -139,20 +95,12 @@ def generate_dashboard():
             return False
         
         dashboard = ONAQualityDashboard(DATA_FILE, config=config)
-        
-        # Get column names from config
-        col_mapping = config.get('column_mapping', {})
-        district_col = col_mapping.get('district_column', 'district')
-        duration_col = col_mapping.get('duration_column', 'duration_minutes')
-        enum_col = col_mapping.get('enumerator_column', 'enumerator_id')
-        
         dashboard.generate_dashboard(
             output_file=DASHBOARD_FILE,
-            district_column=district_col,
-            duration_column=duration_col,
+            district_column='district',
+            duration_column='duration_minutes',
             lat_column='latitude',
-            lon_column='longitude',
-            enumerator_column=enum_col
+            lon_column='longitude'
         )
         
         logger.info("Dashboard generated successfully")
@@ -383,6 +331,6 @@ if __name__ == '__main__':
     logger.info(f"Auto-refresh enabled (interval: {REFRESH_INTERVAL} seconds)")
     
     # Start Flask app
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 8080))
     logger.info(f"Starting Flask server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
