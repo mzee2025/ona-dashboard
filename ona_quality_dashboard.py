@@ -65,22 +65,41 @@ class ONAQualityDashboard:
             enumerator_column = self._find_column(enumerator_column, ['enum', 'enumerator', 'interviewer'])
             treatment_column = self._find_column(None, ['treatment', 'beneficiary', 'group'])
             
-            logger.info(f"Using columns - District: {district_column}, Enumerator: {enumerator_column}, Treatment: {treatment_column}, Duration: {duration_column}")
+            # CRITICAL: Update minimum duration threshold to 50 minutes
+            min_duration_threshold = 50  # Interviews under 50 min are INVALID
+            max_duration_threshold = self.config.get('max_duration', 120)
             
-            # Create figure with subplots - NOW WITH 5 ROWS for beneficiary table
+            logger.info(f"Using columns - District: {district_column}, Enumerator: {enumerator_column}, Treatment: {treatment_column}, Duration: {duration_column}")
+            logger.info(f"Duration thresholds: MIN={min_duration_threshold} min (INVALID if below), MAX={max_duration_threshold} min")
+            
+            # Mark invalid interviews (duration < 50 min)
+            if duration_column in self.df.columns:
+                self.df['is_valid'] = self.df[duration_column] >= min_duration_threshold
+                self.df['is_too_long'] = self.df[duration_column] > max_duration_threshold
+                self.df['is_too_short'] = self.df[duration_column] < min_duration_threshold
+                
+                n_invalid = (~self.df['is_valid']).sum()
+                n_valid = self.df['is_valid'].sum()
+                n_too_long = self.df['is_too_long'].sum()
+                logger.info(f"VALIDITY CHECK: {n_valid} valid, {n_invalid} INVALID (<50min), {n_too_long} too long (>120min)")
+            
+            # Create figure with subplots - NOW WITH 6 ROWS for enumerator performance table
             fig = make_subplots(
-                rows=5, cols=3,
+                rows=6, cols=3,
                 subplot_titles=(
                     '📊 Surveys by District',
                     '⏱️ Interview Duration (Minutes)',
                     '👥 Submissions by Enumerator',
                     '📍 Interview Locations Map',
                     '📈 Daily Submission Trends',
-                    '⚠️ Duration Quality Flags',
+                    '⚠️ Interview Validity Status',
                     '📋 Top Missing Data Fields',
                     '✅ Completion Status',
                     '📊 Overall Quality Score',
                     '👥 Beneficiary vs Non-Beneficiary Breakdown',
+                    '',
+                    '',
+                    '⚠️ Enumerator Performance: Invalid Interviews',
                     '',
                     ''
                 ),
@@ -89,10 +108,11 @@ class ONAQualityDashboard:
                     [{"type": "scattermapbox", "colspan": 2}, None, {"type": "bar"}],
                     [{"type": "scatter", "colspan": 2}, None, {"type": "bar"}],
                     [{"type": "table", "colspan": 2}, None, {"type": "indicator"}],
-                    [{"type": "table", "colspan": 3}, None, None]  # NEW ROW for beneficiary table
+                    [{"type": "table", "colspan": 3}, None, None],
+                    [{"type": "table", "colspan": 3}, None, None]  # NEW ROW for enumerator performance
                 ],
-                row_heights=[0.18, 0.26, 0.22, 0.18, 0.16],
-                vertical_spacing=0.06,
+                row_heights=[0.15, 0.22, 0.18, 0.15, 0.15, 0.15],
+                vertical_spacing=0.05,
                 horizontal_spacing=0.12
             )
             
@@ -144,14 +164,15 @@ class ONAQualityDashboard:
                     row=1, col=2
                 )
                 
-                # Add reference lines for thresholds
-                min_dur = self.config.get('min_duration', 30)
-                max_dur = self.config.get('max_duration', 120)
+                # Add reference line for MINIMUM 50 min threshold (RED - INVALID below this)
+                fig.add_hline(y=min_duration_threshold, line_dash="solid", line_color="red", line_width=3,
+                             annotation_text=f"⚠️ INVALID BELOW {min_duration_threshold} min", 
+                             annotation_position="right",
+                             row=1, col=2)
                 
-                fig.add_hline(y=min_dur, line_dash="dash", line_color="orange", 
-                             annotation_text=f"Min: {min_dur} min", row=1, col=2)
-                fig.add_hline(y=max_dur, line_dash="dash", line_color="red",
-                             annotation_text=f"Max: {max_dur} min", row=1, col=2)
+                # Add reference line for maximum threshold
+                fig.add_hline(y=max_duration_threshold, line_dash="dash", line_color="orange",
+                             annotation_text=f"Max: {max_duration_threshold} min", row=1, col=2)
             
             # 3. SUBMISSIONS BY ENUMERATOR
             if enumerator_column and enumerator_column in self.df.columns:
@@ -182,13 +203,19 @@ class ONAQualityDashboard:
                 valid_gps = self.df.dropna(subset=[lat_column, lon_column])
                 
                 if len(valid_gps) > 0:
-                    # Create hover text with district info
+                    # Create hover text with district info and VALIDITY status
                     hover_text = []
                     for idx, row in valid_gps.iterrows():
                         dist = row.get(district_column, 'Unknown') if district_column else 'Unknown'
                         enum = row.get(enumerator_column, 'Unknown') if enumerator_column else 'Unknown'
                         dur = row.get(duration_column, 'N/A')
-                        text = f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}<br><b>Duration:</b> {dur:.1f} min" if isinstance(dur, (int, float)) else f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}"
+                        is_valid = row.get('is_valid', True)
+                        validity_status = "✅ VALID" if is_valid else "❌ INVALID"
+                        
+                        if isinstance(dur, (int, float)):
+                            text = f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}<br><b>Duration:</b> {dur:.1f} min<br><b>Status:</b> {validity_status}"
+                        else:
+                            text = f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}<br><b>Status:</b> {validity_status}"
                         hover_text.append(text)
                     
                     fig.add_trace(
@@ -229,26 +256,23 @@ class ONAQualityDashboard:
                     row=3, col=1
                 )
             
-            # 6. DURATION QUALITY FLAGS
+            # 6. INTERVIEW VALIDITY STATUS
             if duration_column in self.df.columns:
-                min_dur = self.config.get('min_duration', 30)
-                max_dur = self.config.get('max_duration', 120)
-                
-                too_short = len(self.df[self.df[duration_column] < min_dur])
-                too_long = len(self.df[self.df[duration_column] > max_dur])
-                good = len(self.df[(self.df[duration_column] >= min_dur) & 
-                                  (self.df[duration_column] <= max_dur)])
+                invalid = (~self.df['is_valid']).sum()  # < 50 min = INVALID
+                valid = self.df['is_valid'].sum()  # >= 50 min = VALID
+                too_long = self.df['is_too_long'].sum()
                 
                 fig.add_trace(
                     go.Bar(
-                        x=['Good', 'Too Short', 'Too Long'],
-                        y=[good, too_short, too_long],
+                        x=['✅ Valid\n(≥50 min)', '❌ Invalid\n(<50 min)', '⚠️ Too Long\n(>120 min)'],
+                        y=[valid, invalid, too_long],
                         marker=dict(
-                            color=['#4caf50', '#ff9800', '#f44336'],
+                            color=['#4caf50', '#f44336', '#ff9800'],
                             line=dict(color='white', width=2)
                         ),
-                        text=[good, too_short, too_long],
+                        text=[valid, invalid, too_long],
                         textposition='outside',
+                        textfont=dict(size=14, family='Arial Black'),
                         hovertemplate='<b>%{x}</b><br>Count: %{y}<extra></extra>'
                     ),
                     row=2, col=3
@@ -307,7 +331,7 @@ class ONAQualityDashboard:
             )
             
             # 9. QUALITY SCORE GAUGE
-            quality_score = self._calculate_quality_score(duration_column)
+            quality_score = self._calculate_quality_score(duration_column, min_duration_threshold)
             
             fig.add_trace(
                 go.Indicator(
@@ -337,10 +361,10 @@ class ONAQualityDashboard:
                 row=4, col=3
             )
             
-            # 10. NEW - BENEFICIARY VS NON-BENEFICIARY TABLE
+            # 10. BENEFICIARY VS NON-BENEFICIARY TABLE
             if treatment_column and treatment_column in self.df.columns:
                 beneficiary_stats = self._calculate_beneficiary_breakdown(
-                    treatment_column, district_column, duration_column
+                    treatment_column, district_column, duration_column, min_duration_threshold
                 )
                 
                 fig.add_trace(
@@ -362,16 +386,45 @@ class ONAQualityDashboard:
                     ),
                     row=5, col=1
                 )
-                logger.info("Added beneficiary breakdown table")
+                logger.info("Added beneficiary breakdown table with validity info")
             else:
                 logger.warning(f"Treatment column not found - skipping beneficiary table")
             
+            # 11. NEW - ENUMERATOR PERFORMANCE TABLE (shows who has invalid interviews)
+            if enumerator_column and enumerator_column in self.df.columns and duration_column in self.df.columns:
+                enum_performance = self._calculate_enumerator_performance(
+                    enumerator_column, duration_column, min_duration_threshold, max_duration_threshold
+                )
+                
+                fig.add_trace(
+                    go.Table(
+                        header=dict(
+                            values=list(enum_performance.keys()),
+                            fill_color='#ff6b6b',
+                            font=dict(color='white', size=14, family='Arial Black'),
+                            align='center',
+                            height=40
+                        ),
+                        cells=dict(
+                            values=list(enum_performance.values()),
+                            fill_color=[['#fff3f3', '#ffffff'] * (len(enum_performance['Enumerator']) // 2)],
+                            font=dict(color='#333', size=13),
+                            align='center',
+                            height=35
+                        )
+                    ),
+                    row=6, col=1
+                )
+                logger.info("Added enumerator performance table")
+            else:
+                logger.warning(f"Cannot create enumerator performance table - missing required columns")
+            
             # Update layout with professional styling
             fig.update_layout(
-                height=1800,  # Increased height for new row
+                height=2000,  # Increased height for new row
                 showlegend=False,
                 title={
-                    'text': f'<b>{title}</b><br><sup>Last Updated: {datetime.now().strftime("%B %d, %Y %H:%M:%S")}</sup>',
+                    'text': f'<b>{title}</b><br><sup>Last Updated: {datetime.now().strftime("%B %d, %Y %H:%M:%S")} | ⚠️ Minimum Valid Duration: 50 minutes</sup>',
                     'x': 0.5,
                     'xanchor': 'center',
                     'font': {'size': 28, 'color': '#333', 'family': 'Arial Black'}
@@ -410,14 +463,66 @@ class ONAQualityDashboard:
             logger.error(traceback.format_exc())
             return False
     
-    def _calculate_beneficiary_breakdown(self, treatment_col, district_col, duration_col):
-        """Calculate beneficiary vs non-beneficiary breakdown by district"""
+    def _calculate_enumerator_performance(self, enum_col, duration_col, min_duration, max_duration):
+        """Calculate enumerator performance showing who has invalid interviews"""
+        
+        performance = {
+            'Enumerator': [],
+            'Total': [],
+            '✅ Valid': [],
+            '❌ Too Short (<50min)': [],
+            '⚠️ Too Long (>120min)': [],
+            'Avg Duration': [],
+            'Invalid %': []
+        }
+        
+        # Get all enumerators
+        enumerators = self.df[enum_col].value_counts().index
+        
+        for enum in enumerators:
+            enum_data = self.df[self.df[enum_col] == enum]
+            
+            total = len(enum_data)
+            valid = enum_data['is_valid'].sum() if 'is_valid' in enum_data.columns else 0
+            too_short = enum_data['is_too_short'].sum() if 'is_too_short' in enum_data.columns else 0
+            too_long = enum_data['is_too_long'].sum() if 'is_too_long' in enum_data.columns else 0
+            avg_dur = enum_data[duration_col].mean()
+            invalid_pct = (too_short / total * 100) if total > 0 else 0
+            
+            performance['Enumerator'].append(str(enum))
+            performance['Total'].append(total)
+            performance['✅ Valid'].append(valid)
+            performance['❌ Too Short (<50min)'].append(too_short)
+            performance['⚠️ Too Long (>120min)'].append(too_long)
+            performance['Avg Duration'].append(f"{avg_dur:.1f} min")
+            performance['Invalid %'].append(f"{invalid_pct:.1f}%")
+        
+        # Sort by number of invalid interviews (too short) descending
+        sorted_indices = sorted(range(len(performance['❌ Too Short (<50min)'])), 
+                               key=lambda i: performance['❌ Too Short (<50min)'][i], 
+                               reverse=True)
+        
+        # Reorder all columns based on sorted indices
+        for key in performance:
+            performance[key] = [performance[key][i] for i in sorted_indices]
+        
+        # Limit to top 15 enumerators with most issues
+        max_rows = 15
+        for key in performance:
+            performance[key] = performance[key][:max_rows]
+        
+        return performance
+    
+    def _calculate_beneficiary_breakdown(self, treatment_col, district_col, duration_col, min_duration):
+        """Calculate beneficiary vs non-beneficiary breakdown by district with VALIDITY info"""
         
         # Initialize the breakdown data structure
         breakdown = {
             'Group': [],
             'Total': [],
-            'Avg Duration (min)': []
+            'Valid (≥50min)': [],
+            'Invalid (<50min)': [],
+            'Avg Duration': []
         }
         
         # Add districts as columns if available
@@ -426,7 +531,7 @@ class ONAQualityDashboard:
             for district in districts:
                 breakdown[district] = []
         
-        # Get unique treatment values (handle different possible values)
+        # Get unique treatment values
         treatment_values = self.df[treatment_col].unique()
         
         # Map treatment values to readable labels
@@ -448,11 +553,22 @@ class ONAQualityDashboard:
             breakdown['Group'].append(label)
             breakdown['Total'].append(len(group_data))
             
+            # Validity counts
+            if 'is_valid' in group_data.columns:
+                valid_count = group_data['is_valid'].sum()
+                invalid_count = (~group_data['is_valid']).sum()
+                breakdown['Valid (≥50min)'].append(valid_count)
+                breakdown['Invalid (<50min)'].append(invalid_count)
+            else:
+                breakdown['Valid (≥50min)'].append('N/A')
+                breakdown['Invalid (<50min)'].append('N/A')
+            
+            # Average duration
             if duration_col and duration_col in self.df.columns:
                 avg_dur = group_data[duration_col].mean()
-                breakdown['Avg Duration (min)'].append(f"{avg_dur:.1f}" if not pd.isna(avg_dur) else 'N/A')
+                breakdown['Avg Duration'].append(f"{avg_dur:.1f} min" if not pd.isna(avg_dur) else 'N/A')
             else:
-                breakdown['Avg Duration (min)'].append('N/A')
+                breakdown['Avg Duration'].append('N/A')
             
             # Count by district
             if district_col and district_col in self.df.columns:
@@ -464,11 +580,18 @@ class ONAQualityDashboard:
         breakdown['Group'].append('📊 TOTAL')
         breakdown['Total'].append(len(self.df))
         
+        if 'is_valid' in self.df.columns:
+            breakdown['Valid (≥50min)'].append(self.df['is_valid'].sum())
+            breakdown['Invalid (<50min)'].append((~self.df['is_valid']).sum())
+        else:
+            breakdown['Valid (≥50min)'].append('N/A')
+            breakdown['Invalid (<50min)'].append('N/A')
+        
         if duration_col and duration_col in self.df.columns:
             total_avg = self.df[duration_col].mean()
-            breakdown['Avg Duration (min)'].append(f"{total_avg:.1f}")
+            breakdown['Avg Duration'].append(f"{total_avg:.1f} min")
         else:
-            breakdown['Avg Duration (min)'].append('N/A')
+            breakdown['Avg Duration'].append('N/A')
         
         if district_col and district_col in self.df.columns:
             for district in districts:
@@ -478,10 +601,18 @@ class ONAQualityDashboard:
         return breakdown
     
     def _calculate_completion_stats(self, district_col, duration_col, enum_col):
-        """Calculate comprehensive completion statistics"""
+        """Calculate comprehensive completion statistics with VALIDITY info"""
         stats = {}
         
         stats['📊 Total Surveys'] = f"{len(self.df):,}"
+        
+        # Add validity statistics
+        if 'is_valid' in self.df.columns:
+            valid_count = self.df['is_valid'].sum()
+            invalid_count = (~self.df['is_valid']).sum()
+            valid_pct = (valid_count / len(self.df) * 100)
+            stats['✅ Valid (≥50min)'] = f"{valid_count} ({valid_pct:.1f}%)"
+            stats['❌ Invalid (<50min)'] = f"{invalid_count} ({100-valid_pct:.1f}%)"
         
         if district_col and district_col in self.df.columns:
             n_districts = self.df[district_col].nunique()
@@ -510,8 +641,8 @@ class ONAQualityDashboard:
         
         return stats
     
-    def _calculate_quality_score(self, duration_col):
-        """Calculate overall data quality score (0-100)"""
+    def _calculate_quality_score(self, duration_col, min_duration):
+        """Calculate overall data quality score (0-100) with 50 min validity check"""
         if self.df is None or len(self.df) == 0:
             return 0
         
@@ -519,20 +650,17 @@ class ONAQualityDashboard:
         
         # Completeness score
         completeness = (1 - self.df.isnull().sum().sum() / (len(self.df) * len(self.df.columns))) * 100
-        scores.append(completeness * 0.35)
+        scores.append(completeness * 0.30)
         
         # GPS validity score
         if 'latitude' in self.df.columns and 'longitude' in self.df.columns:
             gps_valid = (self.df[['latitude', 'longitude']].notna().all(axis=1).sum() / len(self.df)) * 100
             scores.append(gps_valid * 0.25)
         
-        # Duration validity score
-        if duration_col and duration_col in self.df.columns:
-            min_dur = self.config.get('min_duration', 30)
-            max_dur = self.config.get('max_duration', 120)
-            valid_durations = self.df[duration_col].between(min_dur, max_dur).sum()
-            duration_score = (valid_durations / len(self.df)) * 100
-            scores.append(duration_score * 0.40)
+        # Duration validity score (UPDATED - must be >= 50 min)
+        if 'is_valid' in self.df.columns:
+            valid_interviews = (self.df['is_valid'].sum() / len(self.df)) * 100
+            scores.append(valid_interviews * 0.45)  # Increased weight for validity
         
         return round(sum(scores), 1)
 
