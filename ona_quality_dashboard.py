@@ -445,66 +445,93 @@ class ONAQualityDashboard:
             logger.error(traceback.format_exc())
             return False
     
-    def _create_beneficiary_pivot_table(self, treatment_col, district_col):
-        """Create pivoted beneficiary table: Districts as rows, Beneficiary/NotBeneficiary as columns"""
+   def _create_beneficiary_pivot_table(self):
+    """Create beneficiary vs non-beneficiary comparison table"""
+    try:
+        # The correct column name based on diagnostic analysis
+        treatment_col = 'respondent_information/treatment'
         
-        # Get target districts from config
-        target_districts = self.config.get('target_districts', [
-            'Bosaso', 'Dhusamareb', 'Beletweyne', 'Baki', 'Gabiley'
-        ])
+        # Verify column exists
+        if treatment_col not in self.df.columns:
+            print(f"\n✗ Treatment column '{treatment_col}' not found!")
+            return self._create_empty_pivot()
         
-        # Create a readable treatment column
-        self.df['Treatment_Label'] = self.df[treatment_col].apply(lambda x: 
-            'Beneficiary' if str(x).lower() in ['1', 'yes', 'true', 'beneficiary', 'treatment'] 
-            else 'NotBeneficiary' if str(x).lower() in ['0', 'no', 'false', 'non-beneficiary', 'control']
-            else 'Unknown'
-        )
+        print(f"\n✓ Found treatment column: {treatment_col}")
+        
+        # Print unique values for debugging
+        print(f"\n=== VALUES IN {treatment_col} ===")
+        print(f"Value counts:\n{self.df[treatment_col].value_counts(dropna=False)}")
+        
+        # Create a copy of relevant columns
+        analysis_df = self.df[[self.district_col, treatment_col]].copy()
+        
+        # Map values to standard categories
+        def categorize_treatment(val):
+            if pd.isna(val):
+                return 'Unknown'
+            
+            val_str = str(val).strip()
+            
+            # Match the exact values from the data
+            if val_str == 'Beneficiary':
+                return 'Beneficiary'
+            elif val_str == 'NotBeneficiary':
+                return 'Non-Beneficiary'
+            else:
+                print(f"  ⚠ Unexpected value: {repr(val)}")
+                return 'Unknown'
+        
+        analysis_df['Beneficiary_Status'] = analysis_df[treatment_col].apply(categorize_treatment)
+        
+        # Show the mapping results
+        print(f"\n=== MAPPING RESULTS ===")
+        print(analysis_df['Beneficiary_Status'].value_counts(dropna=False))
         
         # Create pivot table
         pivot = pd.crosstab(
-            self.df[district_col], 
-            self.df['Treatment_Label'], 
-            margins=False
+            analysis_df[self.district_col],
+            analysis_df['Beneficiary_Status'],
+            margins=True,
+            margins_name='Total'
         )
         
-        # Ensure columns exist
-        if 'Beneficiary' not in pivot.columns:
-            pivot['Beneficiary'] = 0
-        if 'NotBeneficiary' not in pivot.columns:
-            pivot['NotBeneficiary'] = 0
-        
-        # Add all target districts (even if they have no data)
-        for district in target_districts:
+        # Ensure all target districts are present
+        for district in self.target_districts:
             if district not in pivot.index:
                 pivot.loc[district] = 0
         
-        # Select only Beneficiary and NotBeneficiary columns
-        pivot = pivot[['Beneficiary', 'NotBeneficiary']]
+        # Ensure both status columns exist
+        for status in ['Beneficiary', 'Non-Beneficiary']:
+            if status not in pivot.columns:
+                pivot[status] = 0
         
-        # Sort by target districts order
-        pivot = pivot.reindex(target_districts, fill_value=0)
+        # Keep Unknown column if it has data (for transparency)
+        if 'Unknown' in pivot.columns:
+            unknown_count = pivot['Unknown'].sum()
+            if unknown_count > 0:
+                print(f"\nNote: {unknown_count} records with unknown/missing treatment status")
         
-        # Add Grand Total column (row totals)
-        pivot['Grand Total'] = pivot['Beneficiary'] + pivot['NotBeneficiary']
+        # Reorder columns: Beneficiary, Non-Beneficiary, Unknown (if exists), Total
+        cols_order = [col for col in ['Beneficiary', 'Non-Beneficiary', 'Unknown', 'Total'] 
+                     if col in pivot.columns]
+        pivot = pivot[cols_order]
         
-        # Add Grand Total row
-        grand_total_row = pd.DataFrame({
-            'Beneficiary': [pivot['Beneficiary'].sum()],
-            'NotBeneficiary': [pivot['NotBeneficiary'].sum()],
-            'Grand Total': [pivot['Grand Total'].sum()]
-        }, index=['Grand Total'])
+        # Sort districts (Total row last)
+        district_order = [d for d in self.target_districts if d in pivot.index]
+        if 'Total' in pivot.index:
+            district_order.append('Total')
+        pivot = pivot.loc[district_order]
         
-        pivot = pd.concat([pivot, grand_total_row])
+        print(f"\n=== FINAL PIVOT TABLE ===")
+        print(pivot)
         
-        # Convert to dictionary for table
-        table_data = {
-            'District': list(pivot.index),
-            'Beneficiary': list(pivot['Beneficiary'].astype(int)),
-            'NotBeneficiary': list(pivot['NotBeneficiary'].astype(int)),
-            'Grand Total': list(pivot['Grand Total'].astype(int))
-        }
+        return pivot
         
-        return table_data
+    except Exception as e:
+        print(f"\n✗ Error creating beneficiary pivot: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return self._create_empty_pivot()
     
     def _calculate_enumerator_performance_detailed(self, enum_col, duration_col, district_col, 
                                                    lat_col, lon_col, min_duration, max_duration):
