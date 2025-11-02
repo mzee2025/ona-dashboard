@@ -83,7 +83,7 @@ class ONAQualityDashboard:
                 n_too_long = self.df['is_too_long'].sum()
                 logger.info(f"VALIDITY CHECK: {n_valid} valid, {n_invalid} INVALID (<50min), {n_too_long} too long (>120min)")
             
-            # Create figure with subplots - NOW WITH 6 ROWS for enumerator performance table
+            # Create figure with subplots - NOW WITH 6 ROWS
             fig = make_subplots(
                 rows=6, cols=3,
                 subplot_titles=(
@@ -96,10 +96,10 @@ class ONAQualityDashboard:
                     '📋 Top Missing Data Fields',
                     '✅ Completion Status',
                     '📊 Overall Quality Score',
-                    '👥 Beneficiary vs Non-Beneficiary Breakdown',
+                    '👥 Beneficiary vs Non-Beneficiary by District',
                     '',
                     '',
-                    '⚠️ Enumerator Performance: Invalid Interviews',
+                    '⚠️ Enumerator Performance: Invalid Interviews with Location Details',
                     '',
                     ''
                 ),
@@ -109,7 +109,7 @@ class ONAQualityDashboard:
                     [{"type": "scatter", "colspan": 2}, None, {"type": "bar"}],
                     [{"type": "table", "colspan": 2}, None, {"type": "indicator"}],
                     [{"type": "table", "colspan": 3}, None, None],
-                    [{"type": "table", "colspan": 3}, None, None]  # NEW ROW for enumerator performance
+                    [{"type": "table", "colspan": 3}, None, None]
                 ],
                 row_heights=[0.15, 0.22, 0.18, 0.15, 0.15, 0.15],
                 vertical_spacing=0.05,
@@ -124,10 +124,8 @@ class ONAQualityDashboard:
             if district_column and district_column in self.df.columns:
                 district_data = self.df[district_column].value_counts().sort_values(ascending=True)
                 
-                # Log district counts for debugging
                 logger.info(f"District counts: {dict(district_data)}")
                 
-                # Assign colors to each district
                 colors_for_districts = [district_colors[i % len(district_colors)] for i in range(len(district_data))]
                 
                 fig.add_trace(
@@ -146,8 +144,6 @@ class ONAQualityDashboard:
                     ),
                     row=1, col=1
                 )
-            else:
-                logger.warning(f"District column not found. Available columns: {list(self.df.columns)}")
             
             # 2. INTERVIEW DURATION BOX PLOT
             if duration_column in self.df.columns:
@@ -164,21 +160,17 @@ class ONAQualityDashboard:
                     row=1, col=2
                 )
                 
-                # Add reference line for MINIMUM 50 min threshold (RED - INVALID below this)
                 fig.add_hline(y=min_duration_threshold, line_dash="solid", line_color="red", line_width=3,
                              annotation_text=f"⚠️ INVALID BELOW {min_duration_threshold} min", 
                              annotation_position="right",
                              row=1, col=2)
                 
-                # Add reference line for maximum threshold
                 fig.add_hline(y=max_duration_threshold, line_dash="dash", line_color="orange",
                              annotation_text=f"Max: {max_duration_threshold} min", row=1, col=2)
             
             # 3. SUBMISSIONS BY ENUMERATOR
             if enumerator_column and enumerator_column in self.df.columns:
                 enum_data = self.df[enumerator_column].value_counts().head(10)
-                
-                logger.info(f"Enumerator counts: {dict(enum_data)}")
                 
                 fig.add_trace(
                     go.Bar(
@@ -195,15 +187,12 @@ class ONAQualityDashboard:
                     ),
                     row=1, col=3
                 )
-            else:
-                logger.warning(f"Enumerator column not found")
             
             # 4. GPS LOCATIONS MAP
             if lat_column in self.df.columns and lon_column in self.df.columns:
                 valid_gps = self.df.dropna(subset=[lat_column, lon_column])
                 
                 if len(valid_gps) > 0:
-                    # Create hover text with district info and VALIDITY status
                     hover_text = []
                     for idx, row in valid_gps.iterrows():
                         dist = row.get(district_column, 'Unknown') if district_column else 'Unknown'
@@ -235,8 +224,6 @@ class ONAQualityDashboard:
                         ),
                         row=2, col=1
                     )
-                    
-                    logger.info(f"Added {len(valid_gps)} GPS locations to map")
             
             # 5. DAILY SUBMISSION TRENDS
             if '_submission_time' in self.df.columns:
@@ -258,8 +245,8 @@ class ONAQualityDashboard:
             
             # 6. INTERVIEW VALIDITY STATUS
             if duration_column in self.df.columns:
-                invalid = (~self.df['is_valid']).sum()  # < 50 min = INVALID
-                valid = self.df['is_valid'].sum()  # >= 50 min = VALID
+                invalid = (~self.df['is_valid']).sum()
+                valid = self.df['is_valid'].sum()
                 too_long = self.df['is_too_long'].sum()
                 
                 fig.add_trace(
@@ -283,7 +270,6 @@ class ONAQualityDashboard:
             missing_data = missing_data[missing_data > 0]
             
             if len(missing_data) > 0:
-                # Shorten long column names for display
                 display_names = [col.split('/')[-1] if '/' in col else col for col in missing_data.index]
                 
                 fig.add_trace(
@@ -361,24 +347,24 @@ class ONAQualityDashboard:
                 row=4, col=3
             )
             
-            # 10. BENEFICIARY VS NON-BENEFICIARY TABLE
-            if treatment_column and treatment_column in self.df.columns:
-                beneficiary_stats = self._calculate_beneficiary_breakdown(
-                    treatment_column, district_column, duration_column, min_duration_threshold
+            # 10. PIVOTED BENEFICIARY TABLE (Districts as rows, Beneficiary/NotBeneficiary as columns)
+            if treatment_column and treatment_column in self.df.columns and district_column and district_column in self.df.columns:
+                beneficiary_pivot = self._create_beneficiary_pivot_table(
+                    treatment_column, district_column
                 )
                 
                 fig.add_trace(
                     go.Table(
                         header=dict(
-                            values=list(beneficiary_stats.keys()),
+                            values=list(beneficiary_pivot.keys()),
                             fill_color='#4facfe',
                             font=dict(color='white', size=14, family='Arial Black'),
                             align='center',
                             height=40
                         ),
                         cells=dict(
-                            values=list(beneficiary_stats.values()),
-                            fill_color=[['#f0f4f8', '#ffffff'] * (len(beneficiary_stats['Group']) // 2)],
+                            values=list(beneficiary_pivot.values()),
+                            fill_color=[['#f0f4f8', '#ffffff'] * (len(beneficiary_pivot['District']) // 2)],
                             font=dict(color='#333', size=13),
                             align='center',
                             height=35
@@ -386,14 +372,13 @@ class ONAQualityDashboard:
                     ),
                     row=5, col=1
                 )
-                logger.info("Added beneficiary breakdown table with validity info")
-            else:
-                logger.warning(f"Treatment column not found - skipping beneficiary table")
+                logger.info("Added pivoted beneficiary table")
             
-            # 11. NEW - ENUMERATOR PERFORMANCE TABLE (shows who has invalid interviews)
+            # 11. ENUMERATOR PERFORMANCE TABLE WITH GPS AND DISTRICT
             if enumerator_column and enumerator_column in self.df.columns and duration_column in self.df.columns:
-                enum_performance = self._calculate_enumerator_performance(
-                    enumerator_column, duration_column, min_duration_threshold, max_duration_threshold
+                enum_performance = self._calculate_enumerator_performance_detailed(
+                    enumerator_column, duration_column, district_column, 
+                    lat_column, lon_column, min_duration_threshold, max_duration_threshold
                 )
                 
                 fig.add_trace(
@@ -401,27 +386,25 @@ class ONAQualityDashboard:
                         header=dict(
                             values=list(enum_performance.keys()),
                             fill_color='#ff6b6b',
-                            font=dict(color='white', size=14, family='Arial Black'),
+                            font=dict(color='white', size=12, family='Arial Black'),
                             align='center',
                             height=40
                         ),
                         cells=dict(
                             values=list(enum_performance.values()),
                             fill_color=[['#fff3f3', '#ffffff'] * (len(enum_performance['Enumerator']) // 2)],
-                            font=dict(color='#333', size=13),
+                            font=dict(color='#333', size=11),
                             align='center',
-                            height=35
+                            height=30
                         )
                     ),
                     row=6, col=1
                 )
-                logger.info("Added enumerator performance table")
-            else:
-                logger.warning(f"Cannot create enumerator performance table - missing required columns")
+                logger.info("Added detailed enumerator performance table with GPS and location")
             
-            # Update layout with professional styling
+            # Update layout
             fig.update_layout(
-                height=2000,  # Increased height for new row
+                height=2000,
                 showlegend=False,
                 title={
                     'text': f'<b>{title}</b><br><sup>Last Updated: {datetime.now().strftime("%B %d, %Y %H:%M:%S")} | ⚠️ Minimum Valid Duration: 50 minutes</sup>',
@@ -454,7 +437,6 @@ class ONAQualityDashboard:
             # Save dashboard
             fig.write_html(output_file)
             logger.info(f"Dashboard successfully saved to {output_file}")
-            logger.info(f"Total districts shown: {self.df[district_column].nunique() if district_column and district_column in self.df.columns else 0}")
             return True
             
         except Exception as e:
@@ -463,15 +445,58 @@ class ONAQualityDashboard:
             logger.error(traceback.format_exc())
             return False
     
-    def _calculate_enumerator_performance(self, enum_col, duration_col, min_duration, max_duration):
-        """Calculate enumerator performance showing who has invalid interviews"""
+    def _create_beneficiary_pivot_table(self, treatment_col, district_col):
+        """Create pivoted beneficiary table: Districts as rows, Beneficiary/NotBeneficiary as columns"""
+        
+        # Create a readable treatment column
+        self.df['Treatment_Label'] = self.df[treatment_col].apply(lambda x: 
+            'Beneficiary' if str(x).lower() in ['1', 'yes', 'true', 'beneficiary', 'treatment'] 
+            else 'NotBeneficiary' if str(x).lower() in ['0', 'no', 'false', 'non-beneficiary', 'control']
+            else 'Unknown'
+        )
+        
+        # Create pivot table
+        pivot = pd.crosstab(
+            self.df[district_col], 
+            self.df['Treatment_Label'], 
+            margins=True, 
+            margins_name='Grand Total'
+        )
+        
+        # Ensure columns exist
+        if 'Beneficiary' not in pivot.columns:
+            pivot['Beneficiary'] = 0
+        if 'NotBeneficiary' not in pivot.columns:
+            pivot['NotBeneficiary'] = 0
+        
+        # Reorder columns
+        cols = ['Beneficiary', 'NotBeneficiary']
+        if 'Unknown' in pivot.columns:
+            cols.append('Unknown')
+        cols.append('Grand Total')
+        pivot = pivot[cols]
+        
+        # Convert to dictionary for table
+        table_data = {
+            'District': list(pivot.index),
+            'Beneficiary': list(pivot['Beneficiary']),
+            'NotBeneficiary': list(pivot['NotBeneficiary']),
+            'Grand Total': list(pivot['Grand Total'])
+        }
+        
+        return table_data
+    
+    def _calculate_enumerator_performance_detailed(self, enum_col, duration_col, district_col, 
+                                                   lat_col, lon_col, min_duration, max_duration):
+        """Calculate enumerator performance with GPS coordinates and district information"""
         
         performance = {
             'Enumerator': [],
             'Total': [],
-            '✅ Valid': [],
-            '❌ Too Short (<50min)': [],
-            '⚠️ Too Long (>120min)': [],
+            '❌ Too Short': [],
+            '⚠️ Too Long': [],
+            'Districts': [],
+            'GPS Coords': [],
             'Avg Duration': [],
             'Invalid %': []
         }
@@ -483,130 +508,65 @@ class ONAQualityDashboard:
             enum_data = self.df[self.df[enum_col] == enum]
             
             total = len(enum_data)
-            valid = enum_data['is_valid'].sum() if 'is_valid' in enum_data.columns else 0
             too_short = enum_data['is_too_short'].sum() if 'is_too_short' in enum_data.columns else 0
             too_long = enum_data['is_too_long'].sum() if 'is_too_long' in enum_data.columns else 0
             avg_dur = enum_data[duration_col].mean()
             invalid_pct = (too_short / total * 100) if total > 0 else 0
             
+            # Get districts where this enumerator worked
+            if district_col and district_col in enum_data.columns:
+                districts = enum_data[district_col].value_counts().to_dict()
+                district_str = ', '.join([f"{dist}({cnt})" for dist, cnt in districts.items()])
+            else:
+                district_str = 'N/A'
+            
+            # Get GPS coordinates (show a few examples or range)
+            if lat_col in enum_data.columns and lon_col in enum_data.columns:
+                gps_data = enum_data[[lat_col, lon_col]].dropna()
+                if len(gps_data) > 0:
+                    # Show first 2 GPS coordinates as examples
+                    gps_examples = []
+                    for idx, row in gps_data.head(2).iterrows():
+                        gps_examples.append(f"({row[lat_col]:.4f},{row[lon_col]:.4f})")
+                    gps_str = ', '.join(gps_examples)
+                    if len(gps_data) > 2:
+                        gps_str += f' +{len(gps_data)-2} more'
+                else:
+                    gps_str = 'No GPS'
+            else:
+                gps_str = 'N/A'
+            
             performance['Enumerator'].append(str(enum))
             performance['Total'].append(total)
-            performance['✅ Valid'].append(valid)
-            performance['❌ Too Short (<50min)'].append(too_short)
-            performance['⚠️ Too Long (>120min)'].append(too_long)
-            performance['Avg Duration'].append(f"{avg_dur:.1f} min")
+            performance['❌ Too Short'].append(too_short)
+            performance['⚠️ Too Long'].append(too_long)
+            performance['Districts'].append(district_str)
+            performance['GPS Coords'].append(gps_str)
+            performance['Avg Duration'].append(f"{avg_dur:.1f}min")
             performance['Invalid %'].append(f"{invalid_pct:.1f}%")
         
         # Sort by number of invalid interviews (too short) descending
-        sorted_indices = sorted(range(len(performance['❌ Too Short (<50min)'])), 
-                               key=lambda i: performance['❌ Too Short (<50min)'][i], 
+        sorted_indices = sorted(range(len(performance['❌ Too Short'])), 
+                               key=lambda i: performance['❌ Too Short'][i], 
                                reverse=True)
         
-        # Reorder all columns based on sorted indices
+        # Reorder all columns
         for key in performance:
             performance[key] = [performance[key][i] for i in sorted_indices]
         
-        # Limit to top 15 enumerators with most issues
+        # Limit to top 15
         max_rows = 15
         for key in performance:
             performance[key] = performance[key][:max_rows]
         
         return performance
     
-    def _calculate_beneficiary_breakdown(self, treatment_col, district_col, duration_col, min_duration):
-        """Calculate beneficiary vs non-beneficiary breakdown by district with VALIDITY info"""
-        
-        # Initialize the breakdown data structure
-        breakdown = {
-            'Group': [],
-            'Total': [],
-            'Valid (≥50min)': [],
-            'Invalid (<50min)': [],
-            'Avg Duration': []
-        }
-        
-        # Add districts as columns if available
-        if district_col and district_col in self.df.columns:
-            districts = sorted(self.df[district_col].unique())
-            for district in districts:
-                breakdown[district] = []
-        
-        # Get unique treatment values
-        treatment_values = self.df[treatment_col].unique()
-        
-        # Map treatment values to readable labels
-        for treatment_val in sorted(treatment_values):
-            # Determine label
-            if pd.isna(treatment_val):
-                label = 'Unknown'
-            elif str(treatment_val).lower() in ['1', 'yes', 'true', 'beneficiary', 'treatment']:
-                label = '✅ Beneficiary'
-            elif str(treatment_val).lower() in ['0', 'no', 'false', 'non-beneficiary', 'control']:
-                label = '❌ Non-Beneficiary'
-            else:
-                label = str(treatment_val)
-            
-            # Filter data for this treatment group
-            group_data = self.df[self.df[treatment_col] == treatment_val]
-            
-            # Calculate statistics
-            breakdown['Group'].append(label)
-            breakdown['Total'].append(len(group_data))
-            
-            # Validity counts
-            if 'is_valid' in group_data.columns:
-                valid_count = group_data['is_valid'].sum()
-                invalid_count = (~group_data['is_valid']).sum()
-                breakdown['Valid (≥50min)'].append(valid_count)
-                breakdown['Invalid (<50min)'].append(invalid_count)
-            else:
-                breakdown['Valid (≥50min)'].append('N/A')
-                breakdown['Invalid (<50min)'].append('N/A')
-            
-            # Average duration
-            if duration_col and duration_col in self.df.columns:
-                avg_dur = group_data[duration_col].mean()
-                breakdown['Avg Duration'].append(f"{avg_dur:.1f} min" if not pd.isna(avg_dur) else 'N/A')
-            else:
-                breakdown['Avg Duration'].append('N/A')
-            
-            # Count by district
-            if district_col and district_col in self.df.columns:
-                for district in districts:
-                    count = len(group_data[group_data[district_col] == district])
-                    breakdown[district].append(count)
-        
-        # Add TOTAL row
-        breakdown['Group'].append('📊 TOTAL')
-        breakdown['Total'].append(len(self.df))
-        
-        if 'is_valid' in self.df.columns:
-            breakdown['Valid (≥50min)'].append(self.df['is_valid'].sum())
-            breakdown['Invalid (<50min)'].append((~self.df['is_valid']).sum())
-        else:
-            breakdown['Valid (≥50min)'].append('N/A')
-            breakdown['Invalid (<50min)'].append('N/A')
-        
-        if duration_col and duration_col in self.df.columns:
-            total_avg = self.df[duration_col].mean()
-            breakdown['Avg Duration'].append(f"{total_avg:.1f} min")
-        else:
-            breakdown['Avg Duration'].append('N/A')
-        
-        if district_col and district_col in self.df.columns:
-            for district in districts:
-                total_district = len(self.df[self.df[district_col] == district])
-                breakdown[district].append(total_district)
-        
-        return breakdown
-    
     def _calculate_completion_stats(self, district_col, duration_col, enum_col):
-        """Calculate comprehensive completion statistics with VALIDITY info"""
+        """Calculate comprehensive completion statistics"""
         stats = {}
         
         stats['📊 Total Surveys'] = f"{len(self.df):,}"
         
-        # Add validity statistics
         if 'is_valid' in self.df.columns:
             valid_count = self.df['is_valid'].sum()
             invalid_count = (~self.df['is_valid']).sum()
@@ -617,7 +577,6 @@ class ONAQualityDashboard:
         if district_col and district_col in self.df.columns:
             n_districts = self.df[district_col].nunique()
             stats['📍 Districts'] = f"{n_districts}"
-            logger.info(f"Statistics: {n_districts} unique districts")
         
         if enum_col and enum_col in self.df.columns:
             n_enums = self.df[enum_col].nunique()
@@ -642,25 +601,22 @@ class ONAQualityDashboard:
         return stats
     
     def _calculate_quality_score(self, duration_col, min_duration):
-        """Calculate overall data quality score (0-100) with 50 min validity check"""
+        """Calculate overall data quality score"""
         if self.df is None or len(self.df) == 0:
             return 0
         
         scores = []
         
-        # Completeness score
         completeness = (1 - self.df.isnull().sum().sum() / (len(self.df) * len(self.df.columns))) * 100
         scores.append(completeness * 0.30)
         
-        # GPS validity score
         if 'latitude' in self.df.columns and 'longitude' in self.df.columns:
             gps_valid = (self.df[['latitude', 'longitude']].notna().all(axis=1).sum() / len(self.df)) * 100
             scores.append(gps_valid * 0.25)
         
-        # Duration validity score (UPDATED - must be >= 50 min)
         if 'is_valid' in self.df.columns:
             valid_interviews = (self.df['is_valid'].sum() / len(self.df)) * 100
-            scores.append(valid_interviews * 0.45)  # Increased weight for validity
+            scores.append(valid_interviews * 0.45)
         
         return round(sum(scores), 1)
 
