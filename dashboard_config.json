@@ -1,7 +1,8 @@
 {
-    "min_duration": 30,
+    "min_duration": 50,
     "max_duration": 120,
     "start_date": "2025-11-01",
+    "target_total": 1000,
     "target_districts": [
         "Bosaso",
         "Dhusamareb",
@@ -28,20 +29,51 @@
         "enumerator_column": "enums_information/enumerator_name",
         "geopoint_column": "hh_geopoint"
     },
-    "logical_checks": [],
+    "quality_thresholds": {
+        "completeness": 95,
+        "accuracy": 90,
+        "consistency": 85,
+        "timeliness": 80,
+        "validity": 90
+    },
     "alert_thresholds": {
         "min_completion_rate": 80,
         "max_missing_data_percent": 10,
         "max_duration_flags_percent": 5,
-        "max_gps_issues_percent": 2
+        "max_gps_issues_percent": 2,
+        "min_quality_score": 85
     },
     "auto_refresh": {
         "enabled": true,
         "interval_hours": 1
     },
+    "dashboard_features": {
+        "progress_tracker": true,
+        "real_time_alerts": true,
+        "daily_summary": true,
+        "quality_breakdown": true,
+        "enumerator_leaderboard": true,
+        "beneficiary_balance": true,
+        "time_analysis": true,
+        "gps_map": true,
+        "missing_data_patterns": true,
+        "top_issues": true,
+        "performance_metrics": true,
+        "comparison_views": true,
+        "data_freshness": true,
+        "interactive_filters": true,
+        "detailed_metrics": true
+    },
     "exports": {
         "include_raw_data": false,
         "export_flagged_records": true,
         "generate_pdf_summary": true
+    },
+    "display_settings": {
+        "show_top_enumerators": 5,
+        "show_bottom_enumerators": 5,
+        "max_gps_points_map": 200,
+        "show_top_missing_fields": 10,
+        "daily_trend_days": 30
     }
 }

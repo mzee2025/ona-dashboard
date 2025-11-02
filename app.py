@@ -1,6 +1,6 @@
 """
-Flask Web Application for ONA Quality Dashboard
-Complete improved version - ready for deployment
+Flask Web Application for Enhanced ONA Quality Dashboard
+Complete improved version with 15 advanced features
 """
 
 from flask import Flask, render_template, jsonify, send_file, request
@@ -11,7 +11,7 @@ import os
 import logging
 from datetime import datetime
 import requests
-from ona_quality_dashboard import ONAQualityDashboard
+from ona_quality_dashboard_enhanced import ONAQualityDashboard
 import threading
 import time
 import pytz
@@ -47,9 +47,17 @@ def load_config():
     except FileNotFoundError:
         logger.warning(f"Config file {CONFIG_FILE} not found, using defaults")
         return {
-            'min_duration': 30,
+            'min_duration': 50,
             'max_duration': 120,
             'start_date': '2025-11-01',
+            'target_total': 1000,
+            'quality_thresholds': {
+                'completeness': 95,
+                'accuracy': 90,
+                'consistency': 85,
+                'timeliness': 80,
+                'validity': 90
+            },
             'required_fields': []
         }
 
@@ -71,7 +79,7 @@ def fetch_ona_data():
         if response.status_code == 200:
             data = response.json()
             df = pd.DataFrame(data)
-            logger.info(f"Fetched {len(df)} total records from ONA")
+            logger.info(f"✓ Fetched {len(df)} total records from ONA")
             
             # Filter data by start date
             config = load_config()
@@ -86,13 +94,13 @@ def fetch_ona_data():
                 filtered_count = original_count - len(df)
                 
                 if filtered_count > 0:
-                    logger.info(f"Filtered out {filtered_count} pilot records before {start_date_str}")
-                logger.info(f"Keeping {len(df)} records from {start_date_str} onwards")
+                    logger.info(f"✓ Filtered out {filtered_count} pilot records before {start_date_str}")
+                logger.info(f"✓ Keeping {len(df)} records from {start_date_str} onwards")
             
             # Convert duration from seconds to minutes
             if '_duration' in df.columns:
                 df['duration_minutes'] = df['_duration'] / 60
-                logger.info("Converted duration from seconds to minutes")
+                logger.info("✓ Converted duration from seconds to minutes")
             
             # Split geopoint into lat/lon
             if 'hh_geopoint' in df.columns:
@@ -110,19 +118,19 @@ def fetch_ona_data():
                 df[['latitude', 'longitude']] = df['hh_geopoint'].apply(
                     lambda x: pd.Series(split_geopoint(x))
                 )
-                logger.info("Split hh_geopoint into latitude and longitude")
+                logger.info("✓ Split hh_geopoint into latitude and longitude")
             
             # Save to CSV
             df.to_csv(DATA_FILE, index=False)
             last_update_time = datetime.now()
-            logger.info(f"Successfully saved {len(df)} records to {DATA_FILE}")
+            logger.info(f"✓ Successfully saved {len(df)} records to {DATA_FILE}")
             return True
         else:
-            logger.error(f"Failed to fetch data from ONA: {response.status_code}")
+            logger.error(f"✗ Failed to fetch data from ONA: {response.status_code}")
             return False
             
     except Exception as e:
-        logger.error(f"Error fetching ONA data: {str(e)}")
+        logger.error(f"✗ Error fetching ONA data: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return False
@@ -131,9 +139,9 @@ def fetch_ona_data():
 
 
 def generate_dashboard():
-    """Generate the dashboard HTML"""
+    """Generate the enhanced dashboard HTML"""
     try:
-        logger.info("Generating dashboard...")
+        logger.info("Generating enhanced dashboard with 15 features...")
         config = load_config()
         
         if not os.path.exists(DATA_FILE):
@@ -198,43 +206,50 @@ def generate_dashboard():
                         background: #5568d3; 
                         transform: scale(1.05);
                     }
-                    .note { 
-                        background: #fff3cd; 
-                        color: #856404;
+                    .features {
+                        background: #f0f4f8;
                         padding: 20px;
                         border-radius: 10px;
                         margin: 25px 0;
-                        border-left: 5px solid #ffc107;
+                        text-align: left;
                     }
+                    .features h3 { color: #667eea; margin-top: 0; }
+                    .features ul { line-height: 2; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="status">📊</div>
-                    <h1>ONA Quality Dashboard</h1>
-                    <h2>Waiting for Data Collection</h2>
+                    <h1>Enhanced ONA Quality Dashboard</h1>
+                    <h2>Waiting for Data Collection to Start</h2>
                     
                     <div class="info">
                         <p><strong>Dashboard Status:</strong> Active and Ready ✅</p>
                         <p><strong>Start Date:</strong> November 1, 2025</p>
                         <p><strong>Current Records:</strong> 0 (waiting for data)</p>
-                        <p><strong>Auto-Refresh:</strong> Every 5 minutes</p>
+                        <p><strong>Auto-Refresh:</strong> Every hour</p>
                     </div>
                     
-                    <div class="note">
-                        <strong>📌 Note:</strong> The dashboard will automatically populate once data collection 
-                        starts. All visualizations will appear as soon as data is available.
+                    <div class="features">
+                        <h3>🚀 15 Advanced Features Ready:</h3>
+                        <ul>
+                            <li>🎯 Progress Tracker (Target vs Actual)</li>
+                            <li>⚠️ Real-Time Alerts Panel</li>
+                            <li>📊 Daily Summary Cards</li>
+                            <li>⭐ Quality Score Breakdown (5 dimensions)</li>
+                            <li>🏆 Enumerator Leaderboard</li>
+                            <li>👥 Beneficiary Balance Scorecard</li>
+                            <li>🕐 Time Analysis (Peak hours, weekends)</li>
+                            <li>📈 Daily Trends & Patterns</li>
+                            <li>🗺️ Enhanced GPS Map</li>
+                            <li>🔍 Missing Data Analysis</li>
+                            <li>📋 Top Issues Summary</li>
+                            <li>💯 Performance Metrics</li>
+                            <li>🔄 Data Freshness Indicators</li>
+                            <li>📊 Comprehensive Visualizations</li>
+                            <li>🎨 Interactive Dashboard</li>
+                        </ul>
                     </div>
-                    
-                    <p style="font-size: 1.2em; margin: 30px 0;"><strong>What will appear:</strong></p>
-                    <p style="text-align: left; padding: 0 30px; line-height: 2;">
-                        📊 Surveys by district<br>
-                        ⏱️ Interview duration analysis<br>
-                        👥 Enumerator performance<br>
-                        📍 GPS map of locations<br>
-                        📈 Daily trends<br>
-                        ✅ Quality metrics
-                    </p>
                     
                     <br>
                     <a href="/update">Check for Data Now</a>
@@ -245,10 +260,10 @@ def generate_dashboard():
             """
             with open(DASHBOARD_FILE, 'w') as f:
                 f.write(no_data_html)
-            logger.info("Created placeholder dashboard for no data")
+            logger.info("✓ Created enhanced placeholder dashboard")
             return True
         
-        # Generate actual dashboard
+        # Generate actual enhanced dashboard
         dashboard = ONAQualityDashboard(DATA_FILE, config=config)
         dashboard.load_data()
         
@@ -260,20 +275,18 @@ def generate_dashboard():
         
         success = dashboard.generate_dashboard(
             output_file=DASHBOARD_FILE,
-            title='ONA Data Quality Dashboard',
+            title='Enhanced ONA Data Quality Dashboard',
             district_column=district_col,
             duration_column=duration_col,
-            enumerator_column=enum_col,
-            lat_column='latitude',
-            lon_column='longitude'
+            enumerator_column=enum_col
         )
         
         if success:
-            logger.info("Dashboard generated successfully")
+            logger.info("✓ Enhanced dashboard generated successfully with all 15 features")
         return success
         
     except Exception as e:
-        logger.error(f"Error generating dashboard: {str(e)}")
+        logger.error(f"✗ Error generating dashboard: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return False
@@ -281,14 +294,14 @@ def generate_dashboard():
 
 def update_dashboard():
     """Complete dashboard update workflow"""
-    logger.info("Starting dashboard update...")
+    logger.info("Starting enhanced dashboard update...")
     
     if fetch_ona_data():
         if generate_dashboard():
-            logger.info("Dashboard update completed successfully")
+            logger.info("✓ Enhanced dashboard update completed successfully")
             return True
     
-    logger.error("Dashboard update failed")
+    logger.error("✗ Dashboard update failed")
     return False
 
 
@@ -313,8 +326,8 @@ def index():
             <html>
                 <head><title>ONA Dashboard - Generating</title></head>
                 <body style="font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5;">
-                    <h1 style="color: #667eea;">🔄 Dashboard Generating...</h1>
-                    <p>Please wait while we fetch and process your data.</p>
+                    <h1 style="color: #667eea;">🔄 Enhanced Dashboard Generating...</h1>
+                    <p>Please wait while we fetch and process your data with 15 advanced features.</p>
                     <p><a href="/" style="color: #667eea;">Refresh this page</a> in a moment.</p>
                 </body>
             </html>
@@ -324,16 +337,17 @@ def index():
         with open(DASHBOARD_FILE, 'r', encoding='utf-8') as f:
             dashboard_html = f.read()
         
-        # Add update indicator
+        # Add enhanced update indicator
         update_info = f"""
         <div style="position: fixed; top: 15px; right: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                     color: white; padding: 15px 25px; border-radius: 10px; font-family: Arial; z-index: 9999;
                     box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div style="font-weight: bold; font-size: 0.9em;">Last Updated</div>
+            <div style="font-weight: bold; font-size: 0.9em;">🚀 Enhanced Dashboard</div>
+            <div style="font-size: 0.85em; margin-top: 3px; opacity: 0.95;">Last Updated</div>
             <div style="font-size: 1.1em; margin-top: 5px;">
                 {last_update_time.strftime('%b %d, %Y %H:%M') if last_update_time else 'Unknown'}
             </div>
-            <div style="font-size: 0.8em; margin-top: 5px; opacity: 0.9;">Auto-refreshes hourly</div>
+            <div style="font-size: 0.75em; margin-top: 5px; opacity: 0.9;">✅ 15 Features Active | Auto-refreshes hourly</div>
         </div>
         """
         
@@ -350,10 +364,24 @@ def status():
     """API endpoint for dashboard status"""
     return jsonify({
         'status': 'online',
+        'version': 'enhanced',
+        'features': 15,
         'last_update': last_update_time.isoformat() if last_update_time else None,
         'update_in_progress': update_in_progress,
         'data_available': os.path.exists(DATA_FILE),
-        'dashboard_available': os.path.exists(DASHBOARD_FILE)
+        'dashboard_available': os.path.exists(DASHBOARD_FILE),
+        'enhancements': [
+            'Progress Tracker',
+            'Real-Time Alerts',
+            'Daily Summary',
+            'Quality Breakdown',
+            'Enumerator Leaderboard',
+            'Beneficiary Balance',
+            'Time Analysis',
+            'GPS Coverage',
+            'Missing Data Patterns',
+            'Performance Metrics'
+        ]
     })
 
 
@@ -372,7 +400,7 @@ def trigger_update():
     
     return jsonify({
         'success': True,
-        'message': 'Dashboard update triggered'
+        'message': 'Enhanced dashboard update triggered'
     })
 
 
@@ -382,7 +410,7 @@ def update_page():
     return """
     <html>
         <head>
-            <title>Update ONA Dashboard</title>
+            <title>Update Enhanced ONA Dashboard</title>
             <style>
                 body { 
                     font-family: Arial; 
@@ -400,6 +428,14 @@ def update_page():
                     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 }
                 h1 { color: #667eea; margin-top: 0; }
+                .features {
+                    background: #f0f4f8;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    text-align: left;
+                }
+                .features ul { line-height: 1.8; margin: 10px 0; }
                 button { 
                     padding: 18px 40px; 
                     font-size: 18px; 
@@ -426,8 +462,23 @@ def update_page():
         </head>
         <body>
             <div class="container">
-                <h1>🔄 Update Dashboard</h1>
-                <p style="font-size: 1.1em; color: #666;">Click to fetch the latest data from ONA and refresh all visualizations.</p>
+                <h1>🔄 Update Enhanced Dashboard</h1>
+                <p style="font-size: 1.1em; color: #666;">Update the dashboard with latest ONA data and regenerate all 15 advanced features.</p>
+                
+                <div class="features">
+                    <strong>🚀 Enhanced Features:</strong>
+                    <ul style="columns: 2;">
+                        <li>🎯 Progress Tracker</li>
+                        <li>⚠️ Real-Time Alerts</li>
+                        <li>📊 Daily Summary</li>
+                        <li>⭐ Quality Scores</li>
+                        <li>🏆 Leaderboard</li>
+                        <li>👥 Balance Check</li>
+                        <li>🕐 Time Analysis</li>
+                        <li>📈 Trends</li>
+                    </ul>
+                </div>
+                
                 <button onclick="updateDashboard()">🔄 Update Now</button>
                 <button onclick="goHome()" style="background: #06A77D;">📊 View Dashboard</button>
                 <div id="status"></div>
@@ -437,14 +488,14 @@ def update_page():
                 function updateDashboard() {
                     const statusDiv = document.getElementById('status');
                     statusDiv.className = 'info';
-                    statusDiv.innerHTML = '⏳ Updating dashboard... This may take 30-60 seconds.';
+                    statusDiv.innerHTML = '⏳ Updating enhanced dashboard with 15 features... This may take 30-60 seconds.';
                     
                     fetch('/api/update', { method: 'POST' })
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
                                 statusDiv.className = 'success';
-                                statusDiv.innerHTML = '✅ Dashboard updated successfully! Redirecting...';
+                                statusDiv.innerHTML = '✅ Enhanced dashboard updated successfully! All 15 features refreshed. Redirecting...';
                                 setTimeout(() => { window.location.href = '/'; }, 2000);
                             } else {
                                 statusDiv.className = 'error';
@@ -469,15 +520,21 @@ def update_page():
 @app.route('/health')
 def health():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    return jsonify({
+        'status': 'healthy',
+        'version': 'enhanced',
+        'features': 15,
+        'timestamp': datetime.now().isoformat()
+    })
 
 
 if __name__ == '__main__':
-    logger.info("Starting ONA Dashboard Web Application")
+    logger.info("Starting Enhanced ONA Dashboard Web Application")
+    logger.info("🚀 15 Advanced Features Enabled")
     
     # Initial dashboard generation
     if not os.path.exists(DASHBOARD_FILE):
-        logger.info("Dashboard not found, generating initial dashboard...")
+        logger.info("Dashboard not found, generating initial enhanced dashboard...")
         update_dashboard()
     
     # Start auto-refresh worker
