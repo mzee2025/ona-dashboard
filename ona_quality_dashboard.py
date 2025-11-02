@@ -1,4 +1,4 @@
-import pandas as pd
+^Ximport pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import logging
@@ -445,18 +445,19 @@ class ONAQualityDashboard:
             logger.error(traceback.format_exc())
             return False
     
-   def _create_beneficiary_pivot_table(self):
-    """Create beneficiary vs non-beneficiary comparison table"""
-    try:
-        # The correct column name based on diagnostic analysis
-        treatment_col = 'respondent_information/treatment'
+        def _create_beneficiary_pivot_table(self):
         
-        # Verify column exists
-        if treatment_col not in self.df.columns:
+            """Create beneficiary vs non-beneficiary comparison table"""
+            try:
+            # The correct column name based on diagnostic analysis
+            treatment_col = 'respondent_information/treatment'
+        
+            # Verify column exists
+            if treatment_col not in self.df.columns:
             print(f"\n✗ Treatment column '{treatment_col}' not found!")
             return self._create_empty_pivot()
         
-        print(f"\n✓ Found treatment column: {treatment_col}")
+        	print(f"\n✓ Found treatment column: {treatment_col}")
         
         # Print unique values for debugging
         print(f"\n=== VALUES IN {treatment_col} ===")
