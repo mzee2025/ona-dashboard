@@ -63,12 +63,13 @@ class ONAQualityDashboard:
             # Smart column detection - find the actual columns in your data
             district_column = self._find_column(district_column, ['district', 'District_id'])
             enumerator_column = self._find_column(enumerator_column, ['enum', 'enumerator', 'interviewer'])
+            treatment_column = self._find_column(None, ['treatment', 'beneficiary', 'group'])
             
-            logger.info(f"Using columns - District: {district_column}, Enumerator: {enumerator_column}, Duration: {duration_column}")
+            logger.info(f"Using columns - District: {district_column}, Enumerator: {enumerator_column}, Treatment: {treatment_column}, Duration: {duration_column}")
             
-            # Create figure with subplots
+            # Create figure with subplots - NOW WITH 5 ROWS for beneficiary table
             fig = make_subplots(
-                rows=4, cols=3,
+                rows=5, cols=3,
                 subplot_titles=(
                     '📊 Surveys by District',
                     '⏱️ Interview Duration (Minutes)',
@@ -78,16 +79,20 @@ class ONAQualityDashboard:
                     '⚠️ Duration Quality Flags',
                     '📋 Top Missing Data Fields',
                     '✅ Completion Status',
-                    '📊 Overall Quality Score'
+                    '📊 Overall Quality Score',
+                    '👥 Beneficiary vs Non-Beneficiary Breakdown',
+                    '',
+                    ''
                 ),
                 specs=[
                     [{"type": "bar"}, {"type": "box"}, {"type": "bar"}],
                     [{"type": "scattermapbox", "colspan": 2}, None, {"type": "bar"}],
                     [{"type": "scatter", "colspan": 2}, None, {"type": "bar"}],
-                    [{"type": "table", "colspan": 2}, None, {"type": "indicator"}]
+                    [{"type": "table", "colspan": 2}, None, {"type": "indicator"}],
+                    [{"type": "table", "colspan": 3}, None, None]  # NEW ROW for beneficiary table
                 ],
-                row_heights=[0.20, 0.30, 0.25, 0.25],
-                vertical_spacing=0.08,
+                row_heights=[0.18, 0.26, 0.22, 0.18, 0.16],
+                vertical_spacing=0.06,
                 horizontal_spacing=0.12
             )
             
@@ -332,9 +337,38 @@ class ONAQualityDashboard:
                 row=4, col=3
             )
             
+            # 10. NEW - BENEFICIARY VS NON-BENEFICIARY TABLE
+            if treatment_column and treatment_column in self.df.columns:
+                beneficiary_stats = self._calculate_beneficiary_breakdown(
+                    treatment_column, district_column, duration_column
+                )
+                
+                fig.add_trace(
+                    go.Table(
+                        header=dict(
+                            values=list(beneficiary_stats.keys()),
+                            fill_color='#4facfe',
+                            font=dict(color='white', size=14, family='Arial Black'),
+                            align='center',
+                            height=40
+                        ),
+                        cells=dict(
+                            values=list(beneficiary_stats.values()),
+                            fill_color=[['#f0f4f8', '#ffffff'] * (len(beneficiary_stats['Group']) // 2)],
+                            font=dict(color='#333', size=13),
+                            align='center',
+                            height=35
+                        )
+                    ),
+                    row=5, col=1
+                )
+                logger.info("Added beneficiary breakdown table")
+            else:
+                logger.warning(f"Treatment column not found - skipping beneficiary table")
+            
             # Update layout with professional styling
             fig.update_layout(
-                height=1600,
+                height=1800,  # Increased height for new row
                 showlegend=False,
                 title={
                     'text': f'<b>{title}</b><br><sup>Last Updated: {datetime.now().strftime("%B %d, %Y %H:%M:%S")}</sup>',
@@ -375,6 +409,73 @@ class ONAQualityDashboard:
             import traceback
             logger.error(traceback.format_exc())
             return False
+    
+    def _calculate_beneficiary_breakdown(self, treatment_col, district_col, duration_col):
+        """Calculate beneficiary vs non-beneficiary breakdown by district"""
+        
+        # Initialize the breakdown data structure
+        breakdown = {
+            'Group': [],
+            'Total': [],
+            'Avg Duration (min)': []
+        }
+        
+        # Add districts as columns if available
+        if district_col and district_col in self.df.columns:
+            districts = sorted(self.df[district_col].unique())
+            for district in districts:
+                breakdown[district] = []
+        
+        # Get unique treatment values (handle different possible values)
+        treatment_values = self.df[treatment_col].unique()
+        
+        # Map treatment values to readable labels
+        for treatment_val in sorted(treatment_values):
+            # Determine label
+            if pd.isna(treatment_val):
+                label = 'Unknown'
+            elif str(treatment_val).lower() in ['1', 'yes', 'true', 'beneficiary', 'treatment']:
+                label = '✅ Beneficiary'
+            elif str(treatment_val).lower() in ['0', 'no', 'false', 'non-beneficiary', 'control']:
+                label = '❌ Non-Beneficiary'
+            else:
+                label = str(treatment_val)
+            
+            # Filter data for this treatment group
+            group_data = self.df[self.df[treatment_col] == treatment_val]
+            
+            # Calculate statistics
+            breakdown['Group'].append(label)
+            breakdown['Total'].append(len(group_data))
+            
+            if duration_col and duration_col in self.df.columns:
+                avg_dur = group_data[duration_col].mean()
+                breakdown['Avg Duration (min)'].append(f"{avg_dur:.1f}" if not pd.isna(avg_dur) else 'N/A')
+            else:
+                breakdown['Avg Duration (min)'].append('N/A')
+            
+            # Count by district
+            if district_col and district_col in self.df.columns:
+                for district in districts:
+                    count = len(group_data[group_data[district_col] == district])
+                    breakdown[district].append(count)
+        
+        # Add TOTAL row
+        breakdown['Group'].append('📊 TOTAL')
+        breakdown['Total'].append(len(self.df))
+        
+        if duration_col and duration_col in self.df.columns:
+            total_avg = self.df[duration_col].mean()
+            breakdown['Avg Duration (min)'].append(f"{total_avg:.1f}")
+        else:
+            breakdown['Avg Duration (min)'].append('N/A')
+        
+        if district_col and district_col in self.df.columns:
+            for district in districts:
+                total_district = len(self.df[self.df[district_col] == district])
+                breakdown[district].append(total_district)
+        
+        return breakdown
     
     def _calculate_completion_stats(self, district_col, duration_col, enum_col):
         """Calculate comprehensive completion statistics"""
