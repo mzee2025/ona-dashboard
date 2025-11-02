@@ -1,12 +1,6 @@
 """
 Flask Web Application for ONA Quality Dashboard
-Complete version with all fixes:
-- Timezone-aware date filtering
-- GPS geopoint splitting
-- Duration conversion (seconds to minutes)
-- Correct column mapping
-- Enumerator error tracking
-- Empty data handling
+Complete improved version - ready for deployment
 """
 
 from flask import Flask, render_template, jsonify, send_file, request
@@ -61,7 +55,7 @@ def load_config():
 
 
 def fetch_ona_data():
-    """Fetch latest data from ONA API with all fixes"""
+    """Fetch latest data from ONA API"""
     global last_update_time, update_in_progress
     
     try:
@@ -79,18 +73,14 @@ def fetch_ona_data():
             df = pd.DataFrame(data)
             logger.info(f"Fetched {len(df)} total records from ONA")
             
-            # Filter data by start date (exclude pilot data)
+            # Filter data by start date
             config = load_config()
             start_date_str = config.get('start_date', '2025-11-01')
             
             if '_submission_time' in df.columns:
-                # Convert submission time to datetime
                 df['_submission_time'] = pd.to_datetime(df['_submission_time'])
-                
-                # Make START_DATE timezone-aware to match ONA data (UTC)
                 START_DATE = pd.to_datetime(start_date_str).tz_localize(pytz.UTC)
                 
-                # Filter out pilot data
                 original_count = len(df)
                 df = df[df['_submission_time'] >= START_DATE]
                 filtered_count = original_count - len(df)
@@ -104,10 +94,9 @@ def fetch_ona_data():
                 df['duration_minutes'] = df['_duration'] / 60
                 logger.info("Converted duration from seconds to minutes")
             
-            # Split geopoint into separate lat/lon columns
+            # Split geopoint into lat/lon
             if 'hh_geopoint' in df.columns:
                 def split_geopoint(geopoint):
-                    """Split geopoint string into lat, lon"""
                     if pd.isna(geopoint) or geopoint == '':
                         return None, None
                     try:
@@ -151,12 +140,12 @@ def generate_dashboard():
             logger.error(f"Data file {DATA_FILE} not found")
             return False
         
-        # Check if data file has any records
+        # Check if data file has records
         df = pd.read_csv(DATA_FILE)
         
         if len(df) == 0:
             logger.warning("No data available (all records filtered)")
-            # Create placeholder page for no data
+            # Create placeholder page
             no_data_html = """
             <!DOCTYPE html>
             <html>
@@ -165,7 +154,7 @@ def generate_dashboard():
                 <meta http-equiv="refresh" content="300">
                 <style>
                     body { 
-                        font-family: Arial, sans-serif; 
+                        font-family: 'Arial', sans-serif; 
                         text-align: center; 
                         padding: 50px;
                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -175,40 +164,47 @@ def generate_dashboard():
                     .container {
                         background: white;
                         color: #333;
-                        padding: 40px;
+                        padding: 50px;
                         border-radius: 20px;
-                        max-width: 700px;
+                        max-width: 800px;
                         margin: 0 auto;
                         box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                     }
-                    h1 { color: #667eea; margin-top: 0; }
-                    .status { font-size: 64px; margin: 20px 0; }
+                    h1 { color: #667eea; margin-top: 0; font-size: 2.5em; }
+                    .status { font-size: 64px; margin: 30px 0; }
                     .info { 
                         background: #e8f4fd; 
-                        padding: 20px; 
-                        border-radius: 10px; 
-                        margin: 20px 0;
+                        padding: 25px; 
+                        border-radius: 15px; 
+                        margin: 30px 0;
                         text-align: left;
+                        line-height: 1.8;
                     }
-                    .info p { margin: 10px 0; }
+                    .info p { margin: 12px 0; font-size: 1.1em; }
                     .info strong { color: #667eea; }
                     a { 
                         color: white;
                         background: #667eea;
-                        padding: 12px 24px;
-                        border-radius: 8px;
+                        padding: 15px 30px;
+                        border-radius: 10px;
                         text-decoration: none;
                         display: inline-block;
-                        margin: 10px;
+                        margin: 15px;
                         font-weight: bold;
+                        font-size: 1.1em;
+                        transition: all 0.3s;
                     }
-                    a:hover { background: #5568d3; }
+                    a:hover { 
+                        background: #5568d3; 
+                        transform: scale(1.05);
+                    }
                     .note { 
                         background: #fff3cd; 
                         color: #856404;
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin: 20px 0;
+                        padding: 20px;
+                        border-radius: 10px;
+                        margin: 25px 0;
+                        border-left: 5px solid #ffc107;
                     }
                 </style>
             </head>
@@ -216,33 +212,33 @@ def generate_dashboard():
                 <div class="container">
                     <div class="status">📊</div>
                     <h1>ONA Quality Dashboard</h1>
-                    <h2>Waiting for Data Collection to Start</h2>
+                    <h2>Waiting for Data Collection</h2>
                     
                     <div class="info">
                         <p><strong>Dashboard Status:</strong> Active and Ready ✅</p>
                         <p><strong>Start Date:</strong> November 1, 2025</p>
-                        <p><strong>Pilot Records Filtered:</strong> 65 records (before Nov 1)</p>
-                        <p><strong>Current Records:</strong> 0 (waiting for Nov 1+ data)</p>
+                        <p><strong>Current Records:</strong> 0 (waiting for data)</p>
                         <p><strong>Auto-Refresh:</strong> Every 5 minutes</p>
                     </div>
                     
                     <div class="note">
                         <strong>📌 Note:</strong> The dashboard will automatically populate once data collection 
-                        starts on November 1, 2025. All pilot data from before this date has been excluded.
+                        starts. All visualizations will appear as soon as data is available.
                     </div>
                     
-                    <p><strong>What will appear once data is available:</strong></p>
-                    <p style="text-align: left; padding: 0 20px;">
-                        ✅ Completion rates by district<br>
-                        ✅ GPS map of interview locations<br>
-                        ✅ Duration analysis (in minutes)<br>
-                        ✅ Enumerator performance tracking<br>
-                        ✅ Data quality metrics
+                    <p style="font-size: 1.2em; margin: 30px 0;"><strong>What will appear:</strong></p>
+                    <p style="text-align: left; padding: 0 30px; line-height: 2;">
+                        📊 Surveys by district<br>
+                        ⏱️ Interview duration analysis<br>
+                        👥 Enumerator performance<br>
+                        📍 GPS map of locations<br>
+                        📈 Daily trends<br>
+                        ✅ Quality metrics
                     </p>
                     
                     <br>
-                    <a href="/update">Check for New Data Now</a>
-                    <a href="/api/status" style="background: #06A77D;">View System Status</a>
+                    <a href="/update">Check for Data Now</a>
+                    <a href="/api/status" style="background: #06A77D;">System Status</a>
                 </div>
             </body>
             </html>
@@ -252,26 +248,29 @@ def generate_dashboard():
             logger.info("Created placeholder dashboard for no data")
             return True
         
-        # Generate actual dashboard with data
+        # Generate actual dashboard
         dashboard = ONAQualityDashboard(DATA_FILE, config=config)
+        dashboard.load_data()
         
-        # Get column names from config
+        # Get column names
         col_mapping = config.get('column_mapping', {})
         district_col = col_mapping.get('district_column', 'district')
         duration_col = col_mapping.get('duration_column', 'duration_minutes')
         enum_col = col_mapping.get('enumerator_column', 'enumerator_id')
         
-        dashboard.generate_dashboard(
+        success = dashboard.generate_dashboard(
             output_file=DASHBOARD_FILE,
+            title='ONA Data Quality Dashboard',
             district_column=district_col,
             duration_column=duration_col,
+            enumerator_column=enum_col,
             lat_column='latitude',
-            lon_column='longitude',
-            enumerator_column=enum_col
+            lon_column='longitude'
         )
         
-        logger.info("Dashboard generated successfully")
-        return True
+        if success:
+            logger.info("Dashboard generated successfully")
+        return success
         
     except Exception as e:
         logger.error(f"Error generating dashboard: {str(e)}")
@@ -312,14 +311,14 @@ def index():
         if not update_dashboard():
             return """
             <html>
-                <head><title>ONA Dashboard - Error</title></head>
-                <body style="font-family: Arial; text-align: center; padding: 50px;">
-                    <h1>Dashboard Not Available</h1>
-                    <p>Unable to generate dashboard. Please check logs.</p>
-                    <p><a href="/update">Try updating</a></p>
+                <head><title>ONA Dashboard - Generating</title></head>
+                <body style="font-family: Arial; text-align: center; padding: 50px; background: #f5f5f5;">
+                    <h1 style="color: #667eea;">🔄 Dashboard Generating...</h1>
+                    <p>Please wait while we fetch and process your data.</p>
+                    <p><a href="/" style="color: #667eea;">Refresh this page</a> in a moment.</p>
                 </body>
             </html>
-            """, 500
+            """, 503
     
     try:
         with open(DASHBOARD_FILE, 'r', encoding='utf-8') as f:
@@ -327,10 +326,14 @@ def index():
         
         # Add update indicator
         update_info = f"""
-        <div style="position: fixed; top: 10px; right: 10px; background: #2E86AB; color: white; 
-                    padding: 10px 20px; border-radius: 5px; font-family: Arial; z-index: 9999;">
-            Last Updated: {last_update_time.strftime('%Y-%m-%d %H:%M:%S') if last_update_time else 'Unknown'}
-            <br><small>Auto-refreshes every hour</small>
+        <div style="position: fixed; top: 15px; right: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; padding: 15px 25px; border-radius: 10px; font-family: Arial; z-index: 9999;
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            <div style="font-weight: bold; font-size: 0.9em;">Last Updated</div>
+            <div style="font-size: 1.1em; margin-top: 5px;">
+                {last_update_time.strftime('%b %d, %Y %H:%M') if last_update_time else 'Unknown'}
+            </div>
+            <div style="font-size: 0.8em; margin-top: 5px; opacity: 0.9;">Auto-refreshes hourly</div>
         </div>
         """
         
@@ -381,32 +384,52 @@ def update_page():
         <head>
             <title>Update ONA Dashboard</title>
             <style>
-                body { font-family: Arial; padding: 50px; text-align: center; background: #f5f5f5; }
-                .container { background: white; padding: 40px; border-radius: 10px; max-width: 600px; margin: 0 auto; }
-                h1 { color: #667eea; }
+                body { 
+                    font-family: Arial; 
+                    padding: 50px; 
+                    text-align: center; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    margin: 0;
+                }
+                .container { 
+                    background: white; 
+                    padding: 50px; 
+                    border-radius: 20px; 
+                    max-width: 700px; 
+                    margin: 0 auto;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                }
+                h1 { color: #667eea; margin-top: 0; }
                 button { 
-                    padding: 15px 30px; 
+                    padding: 18px 40px; 
                     font-size: 18px; 
                     cursor: pointer; 
-                    background: #667eea; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     color: white; 
                     border: none; 
-                    border-radius: 5px;
-                    margin: 10px;
+                    border-radius: 10px;
+                    margin: 15px;
+                    font-weight: bold;
+                    transition: all 0.3s;
                 }
-                button:hover { background: #5568d3; }
-                #status { margin-top: 20px; padding: 20px; border-radius: 5px; }
-                .success { background: #d4edda; color: #155724; }
-                .error { background: #f8d7da; color: #721c24; }
-                .info { background: #d1ecf1; color: #0c5460; }
+                button:hover { transform: scale(1.05); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+                #status { 
+                    margin-top: 30px; 
+                    padding: 25px; 
+                    border-radius: 10px; 
+                    font-size: 1.1em;
+                }
+                .success { background: #d4edda; color: #155724; border-left: 5px solid #28a745; }
+                .error { background: #f8d7da; color: #721c24; border-left: 5px solid #dc3545; }
+                .info { background: #d1ecf1; color: #0c5460; border-left: 5px solid #17a2b8; }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🔄 ONA Quality Dashboard</h1>
-                <p>Click the button below to fetch the latest data from ONA and refresh the dashboard.</p>
-                <button onclick="updateDashboard()">Update Dashboard Now</button>
-                <button onclick="goHome()" style="background: #06A77D;">View Dashboard</button>
+                <h1>🔄 Update Dashboard</h1>
+                <p style="font-size: 1.1em; color: #666;">Click to fetch the latest data from ONA and refresh all visualizations.</p>
+                <button onclick="updateDashboard()">🔄 Update Now</button>
+                <button onclick="goHome()" style="background: #06A77D;">📊 View Dashboard</button>
                 <div id="status"></div>
             </div>
             
@@ -414,15 +437,15 @@ def update_page():
                 function updateDashboard() {
                     const statusDiv = document.getElementById('status');
                     statusDiv.className = 'info';
-                    statusDiv.innerHTML = '⏳ Updating dashboard... Please wait.';
+                    statusDiv.innerHTML = '⏳ Updating dashboard... This may take 30-60 seconds.';
                     
                     fetch('/api/update', { method: 'POST' })
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
                                 statusDiv.className = 'success';
-                                statusDiv.innerHTML = '✅ Dashboard update triggered! Redirecting...';
-                                setTimeout(() => { window.location.href = '/'; }, 3000);
+                                statusDiv.innerHTML = '✅ Dashboard updated successfully! Redirecting...';
+                                setTimeout(() => { window.location.href = '/'; }, 2000);
                             } else {
                                 statusDiv.className = 'error';
                                 statusDiv.innerHTML = '❌ Error: ' + data.message;
@@ -441,24 +464,6 @@ def update_page():
         </body>
     </html>
     """
-
-
-@app.route('/download/report')
-def download_report():
-    """Download quality report"""
-    try:
-        report_file = 'quality_report.xlsx'
-        
-        if not os.path.exists(report_file):
-            config = load_config()
-            dashboard = ONAQualityDashboard(DATA_FILE, config=config)
-            dashboard.export_quality_report(report_file)
-        
-        return send_file(report_file, as_attachment=True)
-        
-    except Exception as e:
-        logger.error(f"Error downloading report: {str(e)}")
-        return f"Error generating report: {str(e)}", 500
 
 
 @app.route('/health')
@@ -480,7 +485,7 @@ if __name__ == '__main__':
     refresh_thread.start()
     logger.info(f"Auto-refresh enabled (interval: {REFRESH_INTERVAL} seconds)")
     
-    # Start Flask app (port 8080 to avoid Mac AirPlay on 5000)
-    port = int(os.environ.get('PORT', 8080))
+    # Start Flask app
+    port = int(os.environ.get('PORT', 10000))
     logger.info(f"Starting Flask server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
