@@ -32,6 +32,20 @@ class ONAQualityDashboard:
             logger.error(f"Error loading data: {e}")
             return False
     
+    def _find_column(self, column_name, keywords):
+        """Find a column by searching for keywords in column names"""
+        if column_name and column_name in self.df.columns:
+            return column_name
+        
+        # Search for column with keywords
+        for col in self.df.columns:
+            col_lower = col.lower()
+            if any(keyword.lower() in col_lower for keyword in keywords):
+                logger.info(f"Found column '{col}' for {keywords}")
+                return col
+        
+        return None
+    
     def generate_dashboard(self, output_file='ona_dashboard.html', 
                           title='ONA Data Quality Dashboard',
                           district_column='district',
@@ -46,16 +60,11 @@ class ONAQualityDashboard:
             return False
         
         try:
-            # Clean column names - handle nested structure
-            if district_column not in self.df.columns:
-                district_cols = [col for col in self.df.columns if 'district' in col.lower()]
-                if district_cols:
-                    district_column = district_cols[0]
+            # Smart column detection - find the actual columns in your data
+            district_column = self._find_column(district_column, ['district', 'District_id'])
+            enumerator_column = self._find_column(enumerator_column, ['enum', 'enumerator', 'interviewer'])
             
-            if enumerator_column and enumerator_column not in self.df.columns:
-                enum_cols = [col for col in self.df.columns if 'enum' in col.lower()]
-                if enum_cols:
-                    enumerator_column = enum_cols[0]
+            logger.info(f"Using columns - District: {district_column}, Enumerator: {enumerator_column}, Duration: {duration_column}")
             
             # Create figure with subplots
             fig = make_subplots(
@@ -82,10 +91,19 @@ class ONAQualityDashboard:
                 horizontal_spacing=0.12
             )
             
+            # Color palette for districts
+            district_colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe', 
+                              '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#a8edea']
+            
             # 1. SURVEYS BY DISTRICT (Bar Chart)
-            if district_column in self.df.columns:
+            if district_column and district_column in self.df.columns:
                 district_data = self.df[district_column].value_counts().sort_values(ascending=True)
-                colors = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe']
+                
+                # Log district counts for debugging
+                logger.info(f"District counts: {dict(district_data)}")
+                
+                # Assign colors to each district
+                colors_for_districts = [district_colors[i % len(district_colors)] for i in range(len(district_data))]
                 
                 fig.add_trace(
                     go.Bar(
@@ -93,7 +111,7 @@ class ONAQualityDashboard:
                         x=district_data.values,
                         orientation='h',
                         marker=dict(
-                            color=colors[:len(district_data)],
+                            color=colors_for_districts,
                             line=dict(color='white', width=2)
                         ),
                         text=district_data.values,
@@ -103,6 +121,8 @@ class ONAQualityDashboard:
                     ),
                     row=1, col=1
                 )
+            else:
+                logger.warning(f"District column not found. Available columns: {list(self.df.columns)}")
             
             # 2. INTERVIEW DURATION BOX PLOT
             if duration_column in self.df.columns:
@@ -132,6 +152,8 @@ class ONAQualityDashboard:
             if enumerator_column and enumerator_column in self.df.columns:
                 enum_data = self.df[enumerator_column].value_counts().head(10)
                 
+                logger.info(f"Enumerator counts: {dict(enum_data)}")
+                
                 fig.add_trace(
                     go.Bar(
                         x=enum_data.index,
@@ -147,6 +169,8 @@ class ONAQualityDashboard:
                     ),
                     row=1, col=3
                 )
+            else:
+                logger.warning(f"Enumerator column not found")
             
             # 4. GPS LOCATIONS MAP
             if lat_column in self.df.columns and lon_column in self.df.columns:
@@ -156,9 +180,10 @@ class ONAQualityDashboard:
                     # Create hover text with district info
                     hover_text = []
                     for idx, row in valid_gps.iterrows():
-                        dist = row.get(district_column, 'Unknown')
+                        dist = row.get(district_column, 'Unknown') if district_column else 'Unknown'
                         enum = row.get(enumerator_column, 'Unknown') if enumerator_column else 'Unknown'
-                        text = f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}"
+                        dur = row.get(duration_column, 'N/A')
+                        text = f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}<br><b>Duration:</b> {dur:.1f} min" if isinstance(dur, (int, float)) else f"<b>District:</b> {dist}<br><b>Enumerator:</b> {enum}"
                         hover_text.append(text)
                     
                     fig.add_trace(
@@ -178,6 +203,8 @@ class ONAQualityDashboard:
                         ),
                         row=2, col=1
                     )
+                    
+                    logger.info(f"Added {len(valid_gps)} GPS locations to map")
             
             # 5. DAILY SUBMISSION TRENDS
             if '_submission_time' in self.df.columns:
@@ -227,9 +254,12 @@ class ONAQualityDashboard:
             missing_data = missing_data[missing_data > 0]
             
             if len(missing_data) > 0:
+                # Shorten long column names for display
+                display_names = [col.split('/')[-1] if '/' in col else col for col in missing_data.index]
+                
                 fig.add_trace(
                     go.Bar(
-                        y=missing_data.index,
+                        y=display_names,
                         x=missing_data.values,
                         orientation='h',
                         marker=dict(
@@ -337,6 +367,7 @@ class ONAQualityDashboard:
             # Save dashboard
             fig.write_html(output_file)
             logger.info(f"Dashboard successfully saved to {output_file}")
+            logger.info(f"Total districts shown: {self.df[district_column].nunique() if district_column and district_column in self.df.columns else 0}")
             return True
             
         except Exception as e:
@@ -351,13 +382,16 @@ class ONAQualityDashboard:
         
         stats['📊 Total Surveys'] = f"{len(self.df):,}"
         
-        if district_col in self.df.columns:
-            stats['📍 Districts'] = f"{self.df[district_col].nunique()}"
+        if district_col and district_col in self.df.columns:
+            n_districts = self.df[district_col].nunique()
+            stats['📍 Districts'] = f"{n_districts}"
+            logger.info(f"Statistics: {n_districts} unique districts")
         
         if enum_col and enum_col in self.df.columns:
-            stats['👥 Enumerators'] = f"{self.df[enum_col].nunique()}"
+            n_enums = self.df[enum_col].nunique()
+            stats['👥 Enumerators'] = f"{n_enums}"
         
-        if duration_col in self.df.columns:
+        if duration_col and duration_col in self.df.columns:
             avg_duration = self.df[duration_col].mean()
             stats['⏱️ Avg Duration'] = f"{avg_duration:.1f} min"
         
@@ -392,7 +426,7 @@ class ONAQualityDashboard:
             scores.append(gps_valid * 0.25)
         
         # Duration validity score
-        if duration_col in self.df.columns:
+        if duration_col and duration_col in self.df.columns:
             min_dur = self.config.get('min_duration', 30)
             max_dur = self.config.get('max_duration', 120)
             valid_durations = self.df[duration_col].between(min_dur, max_dur).sum()
